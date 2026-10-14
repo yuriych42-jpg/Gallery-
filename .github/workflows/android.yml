@@ -14,10 +14,9 @@ jobs:
 build:
 name: Build Android APK
 runs-on: ubuntu-latest
-
 steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+- name: Checkout repository
+uses: actions/checkout@v4
 
   - name: Set up JDK 17
     uses: actions/setup-java@v4
@@ -25,25 +24,24 @@ steps:
       distribution: temurin
       java-version: "17"
 
+  - name: Check project files
+    run: |
+      echo "Repository contents:"
+      ls -la
+      echo "Searching for Gradle build files:"
+      find . -maxdepth 5 \( -name settings.gradle -o -name settings.gradle.kts -o -name gradlew \) -print
+
   - name: Find Gradle Wrapper
     id: locate
     shell: bash
     run: |
-      echo "Repository root:"
-      ls -la
       WRAPPER=$(find . -maxdepth 5 -type f -name gradlew -print -quit)
       if [ -z "$WRAPPER" ]; then
-        echo "ERROR: gradlew was not found."
-        echo "Upload the complete Android project including gradlew and gradle/wrapper/"
+        echo "ERROR: gradlew was not found in the repository."
         exit 1
       fi
       PROJECT_DIR=$(dirname "$WRAPPER")
-      PROJECT_DIR=${PROJECT_DIR#./}
-      if [ "$PROJECT_DIR" = "." ]; then
-        PROJECT_DIR="."
-      fi
       echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-      echo "Found wrapper: $WRAPPER"
 
   - name: Build debug APK
     working-directory: ${{ steps.locate.outputs.project_dir }}
