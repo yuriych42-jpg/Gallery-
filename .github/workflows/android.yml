@@ -1,43 +1,59 @@
 name: Android CI
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
+push:
+branches: [main, master]
+pull_request:
+branches: [main, master]
+workflow_dispatch:
 
 permissions:
-  contents: read
+contents: read
 
 jobs:
-  build:
-    name: Build Android APK
-    runs-on: ubuntu-latest
+build:
+name: Build Android APK
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+  - name: Set up JDK 17
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: "17"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+  - name: Locate Android project
+    id: locate
+    shell: bash
+    run: |
+      echo "Repository files:"
+      ls -la
+      if [ -f "gradlew" ]; then
+        echo "project_dir=." >> "$GITHUB_OUTPUT"
+      elif [ -f "DateAlbum/gradlew" ]; then
+        echo "project_dir=DateAlbum" >> "$GITHUB_OUTPUT"
+      elif [ -f "Gallery-/gradlew" ]; then
+        echo "project_dir=Gallery-" >> "$GITHUB_OUTPUT"
+      else
+        echo "ERROR: Gradle Wrapper (gradlew) not found."
+        echo "Check that gradlew and gradle/wrapper/gradle-wrapper.properties are committed."
+        exit 1
+      fi
 
-      - name: Grant execute permission
-        run: chmod +x gradlew
-        working-directory: .
+  - name: Build debug APK
+    working-directory: ${{ steps.locate.outputs.project_dir }}
+    run: |
+      chmod +x gradlew
+      ./gradlew assembleDebug
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DateAlbum-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: DateAlbum-debug-apk
+      path: |
+        app/build/outputs/apk/debug/*.apk
+      if-no-files-found: error
