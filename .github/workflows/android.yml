@@ -1,10 +1,7 @@
 
 name: Build Android APK
 
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 permissions:
   contents: read
@@ -12,7 +9,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,8 +22,23 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Find Android project
+        id: project
+        shell: bash
+        run: |
+          SETTINGS=$(find . -maxdepth 6 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle(.kts) not found."
+            echo "Check that the DateAlbum project files were uploaded."
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Found project in: $PROJECT_DIR"
+
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle -p "${{ steps.project.outputs.dir }}" assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
