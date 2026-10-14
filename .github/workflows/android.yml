@@ -1,6 +1,11 @@
-name: Build Android APK
+name: Build Gallery APK
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    paths:
+      - '**'
+      - '!README.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,24 +22,33 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Extract Android project
+      - name: Extract project ZIP
+        shell: bash
         run: |
-          mkdir -p extracted
-          unzip -oq "DateAlbum-Android12-GitHub.zip" -d extracted
-          find extracted -maxdepth 5 -type f -name "settings.gradle*" -print
+          mkdir -p project
+          ZIP=$(find . -maxdepth 2 -type f -name 'Gallery-0.02-project.zip' -print -quit)
+          if [ -z "$ZIP" ]; then
+            ZIP=$(find . -maxdepth 2 -type f -name '*.zip' -print -quit)
+          fi
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: Project ZIP not found in repository."
+            exit 1
+          fi
+          unzip -oq "$ZIP" -d project
 
-      - name: Find project directory
+      - name: Find Android project
         id: project
         shell: bash
         run: |
-          SETTINGS=$(find extracted -maxdepth 6 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+          SETTINGS=$(find project -maxdepth 8 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
           if [ -z "$SETTINGS" ]; then
-            echo "Android project not found inside ZIP."
+            echo "ERROR: settings.gradle(.kts) not found in ZIP."
+            find project -maxdepth 5 -type f | sort
             exit 1
           fi
           echo "dir=$(dirname "$SETTINGS")" >> "$GITHUB_OUTPUT"
@@ -42,9 +56,20 @@ jobs:
       - name: Build APK
         run: gradle -p "${{ steps.project.outputs.dir }}" assembleDebug
 
+      - name: Prepare APK
+        shell: bash
+        run: |
+          APK=$(find project -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not generated."
+            exit 1
+          fi
+          mkdir -p output
+          cp "$APK" output/Gallery-0.02.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DateAlbum-debug-apk
-          path: "extracted/**/build/outputs/apk/debug/*.apk"
+          name: Gallery-0.02-APK
+          path: output/Gallery-0.02.apk
           if-no-files-found: error
