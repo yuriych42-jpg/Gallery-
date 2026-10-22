@@ -1,10 +1,10 @@
+
 name: Build Gallery APK
 
 on:
   push:
     paths:
       - '**'
-      - '!README.md'
   workflow_dispatch:
 
 permissions:
@@ -31,14 +31,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p project
-          ZIP=$(find . -maxdepth 2 -type f -name 'Gallery-0.02-project.zip' -print -quit)
+          ZIP=$(find . -maxdepth 3 -type f -name 'Gallery-0.04-project.zip' -print -quit)
+
           if [ -z "$ZIP" ]; then
-            ZIP=$(find . -maxdepth 2 -type f -name '*.zip' -print -quit)
-          fi
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: Project ZIP not found in repository."
+            echo "ERROR: Gallery-0.04-project.zip not found."
+            echo "Files in repository:"
+            find . -maxdepth 3 -type f | sort
             exit 1
           fi
+
           unzip -oq "$ZIP" -d project
 
       - name: Find Android project
@@ -46,12 +47,16 @@ jobs:
         shell: bash
         run: |
           SETTINGS=$(find project -maxdepth 8 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle(.kts) not found in ZIP."
-            find project -maxdepth 5 -type f | sort
+            echo "ERROR: settings.gradle(.kts) not found."
+            find project -maxdepth 6 -type f | sort
             exit 1
           fi
-          echo "dir=$(dirname "$SETTINGS")" >> "$GITHUB_OUTPUT"
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Found project: $PROJECT_DIR"
 
       - name: Build APK
         run: gradle -p "${{ steps.project.outputs.dir }}" assembleDebug
@@ -60,16 +65,18 @@ jobs:
         shell: bash
         run: |
           APK=$(find project -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)
+
           if [ -z "$APK" ]; then
             echo "ERROR: APK was not generated."
             exit 1
           fi
+
           mkdir -p output
-          cp "$APK" output/Gallery-0.02.apk
+          cp "$APK" output/Gallery-0.04.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Gallery-0.02-APK
-          path: output/Gallery-0.02.apk
+          name: Gallery-0.04-APK
+          path: output/Gallery-0.04.apk
           if-no-files-found: error
