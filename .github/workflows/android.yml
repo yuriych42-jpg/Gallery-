@@ -27,36 +27,48 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Extract project ZIP
+      - name: Extract exact project ZIP
         shell: bash
         run: |
-          mkdir -p project
-          ZIP=$(find . -maxdepth 3 -type f -name 'Gallery-0.04-project.zip' -print -quit)
+          set -e
+          ZIP="Gallery-0.05-project.zip"
 
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: Gallery-0.04-project.zip not found."
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: $ZIP not found in repository root."
             echo "Files in repository:"
-            find . -maxdepth 3 -type f | sort
+            find . -maxdepth 2 -type f | sort
             exit 1
           fi
 
+          rm -rf project
+          mkdir -p project
           unzip -oq "$ZIP" -d project
 
       - name: Find Android project
         id: project
         shell: bash
         run: |
-          SETTINGS=$(find project -maxdepth 8 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+          set -e
+          SETTINGS=$(find project -maxdepth 8 -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle(.kts) not found."
-            find project -maxdepth 6 -type f | sort
+            echo "ERROR: settings.gradle(.kts) not found inside ZIP."
+            find project -maxdepth 5 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Found project: $PROJECT_DIR"
+          echo "Building project in: $PROJECT_DIR"
+
+      - name: Show app version
+        shell: bash
+        run: |
+          echo "Checking app version configuration:"
+          grep -R -n -E 'versionName|versionCode|applicationId' \
+            "${{ steps.project.outputs.dir }}/app/build.gradle.kts" || true
 
       - name: Build APK
         run: gradle -p "${{ steps.project.outputs.dir }}" assembleDebug
@@ -64,7 +76,10 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          APK=$(find project -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)
+          set -e
+          APK=$(find project -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            -print -quit)
 
           if [ -z "$APK" ]; then
             echo "ERROR: APK was not generated."
@@ -72,11 +87,12 @@ jobs:
           fi
 
           mkdir -p output
-          cp "$APK" output/Gallery-0.04.apk
+          cp "$APK" output/Gallery-0.05.apk
+          ls -lh output/Gallery-0.05.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Gallery-0.04-APK
-          path: output/Gallery-0.04.apk
+          name: Gallery-0.05-APK
+          path: output/Gallery-0.05.apk
           if-no-files-found: error
