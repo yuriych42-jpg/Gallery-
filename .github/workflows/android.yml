@@ -3,11 +3,7 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - '**'
-      - '.github/workflows/android.yml'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -26,41 +22,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ARCHIVE=$(find . -maxdepth 1 -type f \
-            -name 'Gallery-*-project.zip' \
-            | sort -V \
-            | tail -n 1)
+            -name 'Gallery-*-project.zip' | sort -V | tail -n 1)
 
           if [ -z "$ARCHIVE" ]; then
-            echo "No Gallery-*-project.zip archive found in repository root."
+            echo "Project archive not found in repository root"
             exit 1
           fi
 
-          FILENAME=$(basename "$ARCHIVE")
-          VERSION=${FILENAME#Gallery-}
-          VERSION=${VERSION%-project.zip}
+          VERSION=$(basename "$ARCHIVE" | sed \
+            -E 's/^Gallery-(.*)-project\.zip$/\1/')
 
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-          echo "Selected archive: $ARCHIVE"
-          echo "App version: $VERSION"
+          echo "Selected: $ARCHIVE, version $VERSION"
 
       - name: Extract project
         run: |
+          set -euo pipefail
           mkdir -p source
           unzip -q "${{ steps.project.outputs.archive }}" -d source
 
-          PROJECT_DIR=$(find source -name gradlew -type f \
-            -printf '%h\n' | head -n 1)
+          SETTINGS=$(find source -type f \
+            \( -name settings.gradle.kts -o -name settings.gradle \) \
+            | head -n 1)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Could not find gradlew in extracted project."
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle(.kts) not found in ZIP"
+            find source -maxdepth 4 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ] && \
+             [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "App Gradle build file not found in $PROJECT_DIR"
+            find "$PROJECT_DIR" -maxdepth 4 -type f
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
 
       - name: Set version
         env:
@@ -71,41 +74,30 @@ jobs:
           import re
           from pathlib import Path
 
-          project = Path(os.environ["PROJECT_DIR"])
-          gradle_file = project / "app" / "build.gradle.kts"
+          root = Path(os.environ["PROJECT_DIR"])
+          gradle = root / "app" / "build.gradle.kts"
+          if not gradle.exists():
+              gradle = root / "app" / "build.gradle"
 
-          if not gradle_file.exists():
-              raise SystemExit(f"Missing file: {gradle_file}")
-
-          text = gradle_file.read_text()
-
-          run_number = int(os.environ["GITHUB_RUN_NUMBER"])
-
-          text, code_count = re.subn(
+          content = gradle.read_text()
+          content, c1 = re.subn(
               r'versionCode\s*=\s*\d+',
-              f'versionCode = {run_number}',
-              text,
-              count=1
+              f'versionCode = {os.environ["GITHUB_RUN_NUMBER"]}',
+              content, count=1
           )
-
-          text, name_count = re.subn(
+          content, c2 = re.subn(
               r'versionName\s*=\s*"[^"]*"',
               f'versionName = "{os.environ["APP_VERSION"]}"',
-              text,
-              count=1
+              content, count=1
           )
 
-          if code_count != 1 or name_count != 1:
-              raise SystemExit(
-                  "Could not update versionCode/versionName in build.gradle.kts"
-              )
+          if c1 != 1 or c2 != 1:
+              raise SystemExit("Could not update versionCode/versionName")
 
-          gradle_file.write_text(text)
-          print(f"versionCode={run_number}")
-          print(f"versionName={os.environ['APP_VERSION']}")
+          gradle.write_text(content)
           PY
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -113,29 +105,29 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Make gradlew executable
-        run: chmod +x "$PROJECT_DIR/gradlew"
+        with:
+          gradle-version: '8.9'
 
       - name: Build APK
         run: |
+          set -euo pipefail
           cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon
 
       - name: Prepare APK
         env:
           APP_VERSION: ${{ steps.project.outputs.version }}
         run: |
-          mkdir -p output
-
+          set -euo pipefail
           APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
             -type f -name '*.apk' | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "APK was not generated."
+            echo "APK was not generated"
             exit 1
           fi
 
+          mkdir -p output
           cp "$APK" "output/Gallery-$APP_VERSION.apk"
           ls -lh output/
 
